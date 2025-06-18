@@ -3,9 +3,11 @@ name = "tui-vision"
 version = "0.1.0"
 edition = "2024"
 authors = ["Joshka"]
+description = "A turbo vision inspired library for ratatui."
 documentation = "https://docs.rs/tui-vision"
 repository = "https://github.com/joshka/tui-vision"
 license = "MIT OR Apache-2.0"
+
 [dependencies]
 crossterm = "0.29"
 ratatui-core = "0.1.0-alpha"

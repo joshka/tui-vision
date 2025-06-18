@@ -1,7 +1,7 @@
 use ratatui_core::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::{StatefulWidget, Widget},
 };
 use ratatui_widgets::{block::Block, clear::Clear};
@@ -48,8 +48,7 @@ impl MenuBar {
     ///
     /// Only affects the first line of the given area, leaving the rest of the buffer unchanged.
     fn render_menu_bar(&self, area: Rect, buf: &mut Buffer) {
-        // MS-DOS edit.com style: cyan background, black text
-        let menu_bar_style = Style::default().bg(Color::Cyan).fg(Color::Black);
+        let menu_bar_style = self.theme.menu_bar;
 
         // Only clear and render the first line of the area
         let menu_bar_area = Rect {
@@ -67,14 +66,9 @@ impl MenuBar {
         for (index, menu) in self.menus.iter().enumerate() {
             let is_open = self.opened_menu == Some(index);
             let menu_style = if is_open {
-                // MS-DOS style: white background, black text for active menu
-                Style::default()
-                    .bg(Color::White)
-                    .fg(Color::Black)
-                    .add_modifier(Modifier::BOLD)
+                self.theme.menu_bar_focused
             } else {
-                // MS-DOS style: cyan background, black text for inactive menus
-                Style::default().bg(Color::Cyan).fg(Color::Black)
+                self.theme.menu_bar
             };
 
             // Render menu title with padding
@@ -179,9 +173,8 @@ impl MenuBar {
     /// The dropdown renders on top of existing buffer content, clearing only its own area.
     /// This allows menus to overlay other content in the terminal.
     fn render_dropdown(&self, menu: &Menu, area: Rect, buf: &mut Buffer) {
-        // MS-DOS edit.com style: light blue background, black text
-        let dropdown_style = Style::default().bg(Color::LightBlue).fg(Color::Black);
-        let border_style = Style::default().bg(Color::Blue).fg(Color::White);
+        let dropdown_style = self.theme.dropdown;
+        let border_style = self.theme.dropdown_border;
 
         // Use Clear widget to clear the dropdown area
         Clear.render(area, buf);
@@ -206,7 +199,7 @@ impl MenuBar {
 
             // Special handling for separators - they span the full dropdown width
             if matches!(item, MenuItem::Separator(_)) {
-                let separator_style = Style::default().bg(Color::Blue).fg(Color::White);
+                let separator_style = self.theme.separator;
 
                 // Render separator line across the full dropdown width
                 buf.set_string(area.x, y, "├", separator_style);
@@ -231,8 +224,8 @@ impl MenuBar {
 
     /// Renders a submenu dropdown.
     fn render_submenu_dropdown(&self, submenu: &super::SubMenuItem, area: Rect, buf: &mut Buffer) {
-        let dropdown_style = Style::default().bg(Color::Blue).fg(Color::White);
-        let border_style = Style::default().bg(Color::Blue).fg(Color::White);
+        let dropdown_style = self.theme.dropdown;
+        let border_style = self.theme.dropdown_border;
 
         // Use Clear widget to clear the submenu area
         Clear.render(area, buf);
@@ -257,7 +250,7 @@ impl MenuBar {
 
             // Special handling for separators - they span the full submenu width
             if matches!(item, MenuItem::Separator(_)) {
-                let separator_style = Style::default().bg(Color::Blue).fg(Color::White);
+                let separator_style = self.theme.separator;
 
                 // Render separator line across the full submenu width
                 buf.set_string(area.x, y, "├", separator_style);
@@ -284,13 +277,11 @@ impl MenuBar {
         match item {
             MenuItem::Action(action) => {
                 let base_style = if is_focused {
-                    Style::default().bg(Color::White).fg(Color::Black)
+                    self.theme.item_focused
                 } else if action.enabled {
-                    Style::default().bg(Color::Blue).fg(Color::White)
+                    self.theme.item
                 } else {
-                    Style::default()
-                        .bg(Color::Blue)
-                        .fg(Color::Rgb(120, 120, 120))
+                    self.theme.item_disabled
                 };
 
                 self.render_action_item(action, x, y, width, base_style, buf);
@@ -301,13 +292,11 @@ impl MenuBar {
             }
             MenuItem::SubMenu(submenu) => {
                 let base_style = if is_focused {
-                    Style::default().bg(Color::White).fg(Color::Black)
+                    self.theme.item_focused
                 } else if submenu.enabled {
-                    Style::default().bg(Color::Blue).fg(Color::White)
+                    self.theme.item
                 } else {
-                    Style::default()
-                        .bg(Color::Blue)
-                        .fg(Color::Rgb(120, 120, 120))
+                    self.theme.item_disabled
                 };
 
                 self.render_submenu_item(submenu, x, y, width, base_style, buf);
@@ -449,22 +438,21 @@ impl StatefulWidget for MenuBar {
 mod tests {
     use super::*;
     use crate::{item, menu, menu_bar};
+    use ratatui::style::{Color, Style};
     use ratatui_core::buffer::Buffer;
     use ratatui_core::layout::Rect;
 
     #[test]
     fn empty_menu_bar_rendering() {
-        use ratatui_core::style::{Color, Style};
-
         let menu_bar = MenuBar::new();
         let area = Rect::new(0, 0, 20, 1);
         let mut buffer = Buffer::empty(area);
 
+        let menu_bar_style = menu_bar.theme.menu_bar;
         Widget::render(menu_bar, area, &mut buffer);
 
         // An empty menu bar should render as all spaces with menu bar style
         let mut expected = Buffer::with_lines(["                    "]);
-        let menu_bar_style = Style::default().bg(Color::Cyan).fg(Color::Black);
         for x in 0..20 {
             expected[(x, 0)].set_style(menu_bar_style);
         }
@@ -473,17 +461,15 @@ mod tests {
 
     #[test]
     fn menu_bar_with_menus_rendering() {
-        use ratatui_core::style::{Color, Style};
-
         let menu_bar = menu_bar![menu!["File", 'F',], menu!["Edit", 'E',],];
         let area = Rect::new(0, 0, 15, 1);
         let mut buffer = Buffer::empty(area);
 
+        let menu_bar_style = menu_bar.theme.menu_bar;
         Widget::render(menu_bar, area, &mut buffer);
 
         // Menu bar should render "  File   Edit  " (with proper spacing)
         let mut expected = Buffer::with_lines(["  File   Edit  "]);
-        let menu_bar_style = Style::default().bg(Color::Cyan).fg(Color::Black);
         // Apply the menu bar style to the entire line
         for x in 0..15 {
             expected[(x, 0)].set_style(menu_bar_style);

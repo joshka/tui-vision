@@ -230,6 +230,25 @@ impl MenuBar {
                             MenuEventResult::ItemSelected { command }
                         }
                         MenuItem::SubMenu(submenu) => {
+                            // If submenu is open and has a focused item, handle that item
+                            if submenu.is_open {
+                                if let Some(submenu_focused) = submenu.focused_item {
+                                    if let Some(submenu_item) = submenu.items.get(submenu_focused) {
+                                        match submenu_item {
+                                            MenuItem::Action(action) => {
+                                                let command = action.command.to_string();
+                                                self.close_menu();
+                                                return MenuEventResult::ItemSelected { command };
+                                            }
+                                            _ => {
+                                                // Handle nested submenus or other cases if needed
+                                                return MenuEventResult::NotHandled;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             // Toggle submenu open/close
                             submenu.is_open = !submenu.is_open;
                             if submenu.is_open {
@@ -446,5 +465,58 @@ mod tests {
             menu_bar.handle_key_event(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
         assert_eq!(result, MenuEventResult::MenuOpened { menu_index: 0 });
         assert!(menu_bar.has_open_menu());
+    }
+
+    #[test]
+    fn submenu_item_selection_triggers_item_selected_event() {
+        use crate::{item, menu, menu_bar};
+
+        let mut menu_bar = menu_bar![menu![
+            "View",
+            'V',
+            item![submenu: "Theme", items: [
+                item![action: "Dark Theme", command: "view.theme.dark", hotkey: 'D'],
+                item![action: "Light Theme", command: "view.theme.light", hotkey: 'L']
+            ], hotkey: 'T'],
+        ]];
+
+        // Open the View menu
+        menu_bar.open_menu(0);
+
+        // The submenu should be focused by default, press Enter to open it
+        let result = menu_bar.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        // Debug: let's check what we actually got
+        match &result {
+            MenuEventResult::SubmenuOpened { submenu_label } => {
+                assert_eq!(submenu_label, "Theme");
+            }
+            other => {
+                panic!("Expected SubmenuOpened, got: {other:?}");
+            }
+        }
+
+        // Navigate down to the first theme option (should be focused already)
+        let menu = menu_bar.opened_menu().unwrap();
+        let submenu = match &menu.items[0] {
+            MenuItem::SubMenu(submenu) => submenu,
+            _ => panic!("Expected submenu"),
+        };
+        assert!(submenu.is_open);
+        assert_eq!(submenu.focused_item, Some(0)); // Should focus "Dark Theme"
+
+        // Press Enter to select the Dark Theme option
+        let result = menu_bar.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        match &result {
+            MenuEventResult::ItemSelected { command } => {
+                assert_eq!(command, "view.theme.dark");
+            }
+            other => {
+                panic!("Expected ItemSelected, got: {other:?}");
+            }
+        }
+
+        // Menu should be closed after selection
+        assert!(!menu_bar.has_open_menu());
     }
 }

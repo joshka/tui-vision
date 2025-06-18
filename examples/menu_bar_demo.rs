@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Constraint, Layout},
     widgets::{Block, Borders, Paragraph},
 };
-use tui_vision::menus::{MenuBar, MenuEventResult};
+use tui_vision::menus::{MenuBar, MenuEventResult, MenuTheme};
 use tui_vision::{item, menu, menu_bar};
 
 fn main() -> Result<()> {
@@ -85,7 +85,26 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
                                 }
                             }
                             MenuEventResult::ItemSelected { command } => {
-                                format!("Selected: {command}")
+                                // Handle theme switching
+                                match command.as_str() {
+                                    "view.theme.classic" => {
+                                        menu_bar.set_theme(MenuTheme::classic());
+                                        "Theme changed to Classic".to_string()
+                                    }
+                                    "view.theme.dark" => {
+                                        menu_bar.set_theme(MenuTheme::dark());
+                                        "Theme changed to Dark".to_string()
+                                    }
+                                    "view.theme.light" => {
+                                        menu_bar.set_theme(MenuTheme::light());
+                                        "Theme changed to Light".to_string()
+                                    }
+                                    "view.theme.terminal" => {
+                                        menu_bar.set_theme(MenuTheme::terminal());
+                                        "Theme changed to Terminal".to_string()
+                                    }
+                                    _ => format!("Selected: {command}"),
+                                }
                             }
                             MenuEventResult::SubmenuOpened { submenu_label } => {
                                 format!("Opened submenu: {submenu_label}")
@@ -153,9 +172,10 @@ fn create_demo_menu_bar() -> MenuBar {
             item![action: "Toggle Status Bar", command: "view.toggle_statusbar", hotkey: 'T'],
             item![separator],
             item![submenu: "Theme", items: [
-                item![action: "Light Theme", command: "view.theme.light", hotkey: 'L'],
+                item![action: "Classic Theme", command: "view.theme.classic", hotkey: 'C'],
                 item![action: "Dark Theme", command: "view.theme.dark", hotkey: 'D'],
-                item![action: "Auto Theme", command: "view.theme.auto", hotkey: 'A']
+                item![action: "Light Theme", command: "view.theme.light", hotkey: 'L'],
+                item![action: "Terminal Theme", command: "view.theme.terminal", hotkey: 'T']
             ], hotkey: 'H'],
         ],
         menu![
@@ -201,6 +221,7 @@ fn create_help_text(menu_bar: &MenuBar, status_message: &str) -> String {
 
     help.push_str("Features to explore:\n");
     help.push_str("- Multiple submenus (File > Export, View > Theme)\n");
+    help.push_str("- Theme switching (View > Theme > Classic/Dark/Light/Terminal)\n");
     help.push_str("- Rich set of menu items with shortcuts\n");
     help.push_str("- Separators for visual grouping\n");
     help.push_str("- Hotkey highlighting in menu items\n\n");

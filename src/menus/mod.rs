@@ -2,6 +2,7 @@ pub use self::bar::*;
 pub use self::events::*;
 pub use self::item::*;
 pub use self::menu::*;
+pub use self::theme::*;
 
 mod bar;
 mod events;
@@ -9,6 +10,7 @@ mod item;
 mod menu;
 mod render;
 mod state;
+mod theme;
 
 #[macro_use]
 mod macros;

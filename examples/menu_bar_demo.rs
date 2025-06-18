@@ -6,6 +6,7 @@ use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
+    style::Style,
     widgets::{Block, Borders, Paragraph},
 };
 use tui_vision::menus::{MenuBar, MenuEventResult, MenuTheme};
@@ -19,8 +20,15 @@ fn main() -> Result<()> {
     result
 }
 
+struct Theme {
+    body: Style,
+}
+
 fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
     let mut menu_bar = create_demo_menu_bar();
+    let mut theme = Theme {
+        body: Style::default().on_black(),
+    };
     let mut status_message = String::from("Press Space, Alt+Menu, or menu hotkeys to get started!");
 
     loop {
@@ -38,11 +46,9 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
             let help_text = create_help_text(&menu_bar, &status_message);
 
             // Render some content below
-            let content = Paragraph::new(help_text).block(
-                Block::new()
-                    .borders(Borders::ALL)
-                    .title("Menu Bar Demo - Keyboard Navigation"),
-            );
+            let content = Paragraph::new(help_text)
+                .style(theme.body)
+                .block(Block::new().title("Menu Bar Demo - Keyboard Navigation"));
             frame.render_widget(content, layout[1]);
 
             // Render the menu bar
@@ -89,18 +95,30 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
                                 match command.as_str() {
                                     "view.theme.classic" => {
                                         menu_bar.set_theme(MenuTheme::classic());
+                                        theme = Theme {
+                                            body: Style::new().on_black(),
+                                        };
                                         "Theme changed to Classic".to_string()
                                     }
                                     "view.theme.dark" => {
                                         menu_bar.set_theme(MenuTheme::dark());
+                                        theme = Theme {
+                                            body: Style::new().on_black(),
+                                        };
                                         "Theme changed to Dark".to_string()
                                     }
                                     "view.theme.light" => {
                                         menu_bar.set_theme(MenuTheme::light());
+                                        theme = Theme {
+                                            body: Style::new().black().on_gray(),
+                                        };
                                         "Theme changed to Light".to_string()
                                     }
                                     "view.theme.terminal" => {
                                         menu_bar.set_theme(MenuTheme::terminal());
+                                        theme = Theme {
+                                            body: Style::new().green().on_black(),
+                                        };
                                         "Theme changed to Terminal".to_string()
                                     }
                                     _ => format!("Selected: {command}"),
@@ -204,8 +222,6 @@ fn create_demo_menu_bar() -> MenuBar {
 /// Creates help text showing current menu state and available commands.
 fn create_help_text(menu_bar: &MenuBar, status_message: &str) -> String {
     let mut help = String::new();
-    help.push_str("Menu Bar Demo - Comprehensive Keyboard Navigation\n\n");
-
     help.push_str("Menu Access:\n");
     help.push_str("- Alt+F, Alt+E, Alt+V, Alt+T, Alt+H: Open specific menus\n");
     help.push_str("- F, E, V, T, H: Open menus by hotkey (when no menu is open)\n");

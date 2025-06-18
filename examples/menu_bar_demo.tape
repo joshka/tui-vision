@@ -57,7 +57,7 @@
 
 Output "target/menu_bar_demo.gif"
 Set Width 1200
-Set Height 800
+Set Height 1000
 Set Theme "Aardvark Blue"
 
 Hide

@@ -1,0 +1,10 @@
+[package]
+name = "tui-vision"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ratatui-core = "0.1.0-alpha"
+
+[dev-dependencies]
+ratatui = "0.30.0-alpha"

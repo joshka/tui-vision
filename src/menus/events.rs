@@ -2,6 +2,13 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::{MenuBar, MenuItem};
 
+/// Direction for submenu navigation.
+#[derive(Debug, Clone, Copy)]
+enum SubmenuNavDirection {
+    Up,
+    Down,
+}
+
 /// Result of handling a key event in the menu system.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MenuEventResult {
@@ -63,6 +70,103 @@ impl MenuBar {
         }
     }
 
+    /// Helper to get the currently focused submenu if any.
+    fn get_focused_submenu_mut(&mut self) -> Option<&mut super::SubMenuItem> {
+        let menu = self.opened_menu_mut()?;
+        let focused_index = menu.focused_item?;
+        match menu.items.get_mut(focused_index)? {
+            MenuItem::SubMenu(submenu) => Some(submenu),
+            _ => None,
+        }
+    }
+
+    /// Helper to check if we're currently in an open submenu.
+    fn is_in_open_submenu(&self) -> bool {
+        if let Some(menu) = self.opened_menu() {
+            if let Some(focused_index) = menu.focused_item {
+                if let Some(MenuItem::SubMenu(submenu)) = menu.items.get(focused_index) {
+                    return submenu.is_open;
+                }
+            }
+        }
+        false
+    }
+
+    /// Helper to navigate within a submenu.
+    fn navigate_submenu(&mut self, direction: SubmenuNavDirection) -> MenuEventResult {
+        let submenu = match self.get_focused_submenu_mut() {
+            Some(submenu) if submenu.is_open => submenu,
+            _ => return MenuEventResult::NotHandled,
+        };
+
+        match direction {
+            SubmenuNavDirection::Down => {
+                if let Some(current) = submenu.focused_item {
+                    let next =
+                        submenu
+                            .items
+                            .iter()
+                            .enumerate()
+                            .skip(current + 1)
+                            .find_map(|(i, item)| {
+                                if !matches!(item, MenuItem::Separator(_)) {
+                                    Some(i)
+                                } else {
+                                    None
+                                }
+                            });
+                    submenu.focused_item = next.or(submenu.focused_item);
+                } else {
+                    submenu.focused_item = submenu
+                        .items
+                        .iter()
+                        .position(|item| !matches!(item, MenuItem::Separator(_)));
+                }
+            }
+            SubmenuNavDirection::Up => {
+                if let Some(current) = submenu.focused_item {
+                    if current > 0 {
+                        let prev = submenu
+                            .items
+                            .iter()
+                            .enumerate()
+                            .take(current)
+                            .rev()
+                            .find_map(|(i, item)| {
+                                if !matches!(item, MenuItem::Separator(_)) {
+                                    Some(i)
+                                } else {
+                                    None
+                                }
+                            });
+                        submenu.focused_item = prev.or(submenu.focused_item);
+                    }
+                }
+            }
+        }
+        MenuEventResult::NavigationChanged
+    }
+
+    /// Helper to handle submenu item selection.
+    fn handle_submenu_item_selection(&mut self) -> Option<MenuEventResult> {
+        let submenu = self.get_focused_submenu_mut()?;
+        if !submenu.is_open {
+            return None;
+        }
+
+        let submenu_focused = submenu.focused_item?;
+        let submenu_item = submenu.items.get(submenu_focused)?;
+
+        match submenu_item {
+            MenuItem::Action(action) => {
+                let command = action.command.to_string();
+                self.close_menu();
+                Some(MenuEventResult::ItemSelected { command })
+            }
+            _ => Some(MenuEventResult::NotHandled),
+        }
+    }
+
     fn handle_menu_hotkey(&mut self, hotkey: char) -> MenuEventResult {
         // Check for menu hotkeys (case insensitive)
         for (index, menu) in self.menus.iter().enumerate() {
@@ -77,26 +181,19 @@ impl MenuBar {
     }
 
     fn handle_left_arrow(&mut self) -> MenuEventResult {
-        if let Some(menu) = self.opened_menu_mut() {
-            // Check if we're in a submenu and should close it
-            if let Some(focused_index) = menu.focused_item {
-                if let Some(item) = menu.items.get_mut(focused_index) {
-                    if let MenuItem::SubMenu(submenu) = item {
-                        if submenu.is_open {
-                            // Close the submenu
-                            submenu.is_open = false;
-                            submenu.focused_item = None;
-                            return MenuEventResult::SubmenuClosed {
-                                submenu_label: submenu.label.clone(),
-                            };
-                        }
-                    }
-                }
+        // Check if we're in a submenu and should close it
+        if let Some(submenu) = self.get_focused_submenu_mut() {
+            if submenu.is_open {
+                submenu.is_open = false;
+                submenu.focused_item = None;
+                return MenuEventResult::SubmenuClosed {
+                    submenu_label: submenu.label.clone(),
+                };
             }
-            // Move to previous menu
-            self.open_previous_menu();
-            MenuEventResult::NavigationChanged
-        } else if self.has_open_menu() {
+        }
+
+        // Move to previous menu if we have an open menu
+        if self.has_open_menu() {
             self.open_previous_menu();
             MenuEventResult::NavigationChanged
         } else {
@@ -105,35 +202,24 @@ impl MenuBar {
     }
 
     fn handle_right_arrow(&mut self) -> MenuEventResult {
-        if let Some(menu) = self.opened_menu_mut() {
-            // Check if current focused item is a submenu
-            if let Some(focused_index) = menu.focused_item {
-                if let Some(item) = menu.items.get_mut(focused_index) {
-                    if let MenuItem::SubMenu(submenu) = item {
-                        if !submenu.is_open {
-                            // Open the submenu
-                            submenu.is_open = true;
-                            // Focus first selectable item in submenu
-                            submenu.focused_item = submenu
-                                .items
-                                .iter()
-                                .position(|item| !matches!(item, MenuItem::Separator(_)));
+        // Check if current focused item is a submenu
+        if let Some(submenu) = self.get_focused_submenu_mut() {
+            if !submenu.is_open {
+                // Open the submenu
+                submenu.is_open = true;
+                submenu.focused_item = submenu
+                    .items
+                    .iter()
+                    .position(|item| !matches!(item, MenuItem::Separator(_)));
 
-                            return MenuEventResult::SubmenuOpened {
-                                submenu_label: submenu.label.clone(),
-                            };
-                        } else {
-                            // Submenu is already open, move to next menu
-                            self.open_next_menu();
-                            return MenuEventResult::NavigationChanged;
-                        }
-                    }
-                }
+                return MenuEventResult::SubmenuOpened {
+                    submenu_label: submenu.label.clone(),
+                };
             }
-            // Move to next menu
-            self.open_next_menu();
-            MenuEventResult::NavigationChanged
-        } else if self.has_open_menu() {
+        }
+
+        // Move to next menu if we have an open menu
+        if self.has_open_menu() {
             self.open_next_menu();
             MenuEventResult::NavigationChanged
         } else {
@@ -142,37 +228,13 @@ impl MenuBar {
     }
 
     fn handle_down_arrow(&mut self) -> MenuEventResult {
-        if let Some(menu) = self.opened_menu_mut() {
-            // Check if we're in a submenu
-            if let Some(focused_index) = menu.focused_item {
-                if let Some(MenuItem::SubMenu(submenu)) = menu.items.get_mut(focused_index) {
-                    if submenu.is_open {
-                        // Navigate within submenu
-                        if let Some(current) = submenu.focused_item {
-                            // Find next selectable item in submenu
-                            let next = submenu.items.iter().enumerate().skip(current + 1).find_map(
-                                |(i, item)| {
-                                    if !matches!(item, MenuItem::Separator(_)) {
-                                        Some(i)
-                                    } else {
-                                        None
-                                    }
-                                },
-                            );
-                            submenu.focused_item = next.or(submenu.focused_item);
-                        } else {
-                            // Focus first item in submenu
-                            submenu.focused_item = submenu
-                                .items
-                                .iter()
-                                .position(|item| !matches!(item, MenuItem::Separator(_)));
-                        }
-                        return MenuEventResult::NavigationChanged;
-                    }
-                }
-            }
+        // Try to navigate within submenu first
+        if self.is_in_open_submenu() {
+            return self.navigate_submenu(SubmenuNavDirection::Down);
+        }
 
-            // Regular menu navigation
+        // Regular menu navigation
+        if let Some(menu) = self.opened_menu_mut() {
             menu.focus_next_item();
             MenuEventResult::NavigationChanged
         } else {
@@ -181,37 +243,13 @@ impl MenuBar {
     }
 
     fn handle_up_arrow(&mut self) -> MenuEventResult {
-        if let Some(menu) = self.opened_menu_mut() {
-            // Check if we're in a submenu
-            if let Some(focused_index) = menu.focused_item {
-                if let Some(MenuItem::SubMenu(submenu)) = menu.items.get_mut(focused_index) {
-                    if submenu.is_open {
-                        // Navigate within submenu
-                        if let Some(current) = submenu.focused_item {
-                            if current > 0 {
-                                // Find previous selectable item in submenu
-                                let prev = submenu
-                                    .items
-                                    .iter()
-                                    .enumerate()
-                                    .take(current)
-                                    .rev()
-                                    .find_map(|(i, item)| {
-                                        if !matches!(item, MenuItem::Separator(_)) {
-                                            Some(i)
-                                        } else {
-                                            None
-                                        }
-                                    });
-                                submenu.focused_item = prev.or(submenu.focused_item);
-                            }
-                        }
-                        return MenuEventResult::NavigationChanged;
-                    }
-                }
-            }
+        // Try to navigate within submenu first
+        if self.is_in_open_submenu() {
+            return self.navigate_submenu(SubmenuNavDirection::Up);
+        }
 
-            // Regular menu navigation
+        // Regular menu navigation
+        if let Some(menu) = self.opened_menu_mut() {
             menu.focus_previous_item();
             MenuEventResult::NavigationChanged
         } else {
@@ -220,63 +258,51 @@ impl MenuBar {
     }
 
     fn handle_enter(&mut self) -> MenuEventResult {
-        if let Some(menu) = self.opened_menu_mut() {
-            if let Some(focused_index) = menu.focused_item {
-                if let Some(item) = menu.items.get_mut(focused_index) {
-                    match item {
-                        MenuItem::Action(action) => {
-                            let command = action.command.to_string();
-                            self.close_menu();
-                            MenuEventResult::ItemSelected { command }
-                        }
-                        MenuItem::SubMenu(submenu) => {
-                            // If submenu is open and has a focused item, handle that item
-                            if submenu.is_open {
-                                if let Some(submenu_focused) = submenu.focused_item {
-                                    if let Some(submenu_item) = submenu.items.get(submenu_focused) {
-                                        match submenu_item {
-                                            MenuItem::Action(action) => {
-                                                let command = action.command.to_string();
-                                                self.close_menu();
-                                                return MenuEventResult::ItemSelected { command };
-                                            }
-                                            _ => {
-                                                // Handle nested submenus or other cases if needed
-                                                return MenuEventResult::NotHandled;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+        // First check if we're selecting a submenu item
+        if let Some(result) = self.handle_submenu_item_selection() {
+            return result;
+        }
 
-                            // Toggle submenu open/close
-                            submenu.is_open = !submenu.is_open;
-                            if submenu.is_open {
-                                // Find first selectable item in submenu
-                                submenu.focused_item = submenu
-                                    .items
-                                    .iter()
-                                    .position(|item| !matches!(item, MenuItem::Separator(_)));
-                                MenuEventResult::SubmenuOpened {
-                                    submenu_label: submenu.label.clone(),
-                                }
-                            } else {
-                                submenu.focused_item = None;
-                                MenuEventResult::SubmenuClosed {
-                                    submenu_label: submenu.label.clone(),
-                                }
-                            }
-                        }
-                        MenuItem::Separator(_) => MenuEventResult::NotHandled,
+        // Handle main menu items
+        let menu = match self.opened_menu_mut() {
+            Some(menu) => menu,
+            None => return MenuEventResult::NotHandled,
+        };
+
+        let focused_index = match menu.focused_item {
+            Some(index) => index,
+            None => return MenuEventResult::NotHandled,
+        };
+
+        let item = match menu.items.get_mut(focused_index) {
+            Some(item) => item,
+            None => return MenuEventResult::NotHandled,
+        };
+
+        match item {
+            MenuItem::Action(action) => {
+                let command = action.command.to_string();
+                self.close_menu();
+                MenuEventResult::ItemSelected { command }
+            }
+            MenuItem::SubMenu(submenu) => {
+                submenu.is_open = !submenu.is_open;
+                if submenu.is_open {
+                    submenu.focused_item = submenu
+                        .items
+                        .iter()
+                        .position(|item| !matches!(item, MenuItem::Separator(_)));
+                    MenuEventResult::SubmenuOpened {
+                        submenu_label: submenu.label.clone(),
                     }
                 } else {
-                    MenuEventResult::NotHandled
+                    submenu.focused_item = None;
+                    MenuEventResult::SubmenuClosed {
+                        submenu_label: submenu.label.clone(),
+                    }
                 }
-            } else {
-                MenuEventResult::NotHandled
             }
-        } else {
-            MenuEventResult::NotHandled
+            MenuItem::Separator(_) => MenuEventResult::NotHandled,
         }
     }
 

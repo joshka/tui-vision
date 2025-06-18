@@ -1,69 +1,28 @@
-pub use self::core::*;
-pub use self::items::*;
+pub use self::bar::*;
+pub use self::events::*;
+pub use self::item::*;
+pub use self::menu::*;
 
-mod builders;
-mod core;
-mod items;
+mod bar;
+mod events;
+mod item;
+mod menu;
+mod render;
 mod state;
 
-// Export macros for convenience
-#[macro_export]
-macro_rules! menu_bar {
-    ($($menu:expr),* $(,)?) => {
-        {
-            let mut menu_bar = MenuBar::new();
-            $(
-                menu_bar.add_menu($menu);
-            )*
-            menu_bar
-        }
-    };
-}
+#[macro_use]
+mod macros;
 
-#[macro_export]
-macro_rules! menu {
-    ($title:expr, $hotkey:expr, $($item:expr),* $(,)?) => {
-        {
-            let mut menu = Menu::with_hotkey($title, $hotkey);
-            $(
-                menu.add_item($item);
-            )*
-            menu
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! item {
-    (action: $text:expr, command: $command:expr $(, hotkey: $hotkey:expr)? $(, shortcut: $shortcut:expr)?) => {
-        {
-            let mut item = MenuItem::action($text, $command);
-            $(item = item.with_hotkey($hotkey);)?
-            $(item = item.with_shortcut($shortcut);)?
-            item
-        }
-    };
-    (separator) => {
-        MenuItem::separator()
-    };
-    (submenu: $text:expr, items: [$($sub_item:expr),*] $(, hotkey: $hotkey:expr)?) => {
-        {
-            let mut submenu = MenuItem::submenu($text, vec![$($sub_item),*]);
-            $(submenu = submenu.with_hotkey($hotkey);)?
-            submenu
-        }
-    };
-}
-
-// Make macros available to users of this module
-pub use {item, menu, menu_bar};
+// Re-export macros
+pub use crate::{item, menu, menu_bar};
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn menu_bar() {
+    fn test_menu_hierarchy() {
+        // Create a typical application menu bar using macros
         let menu_bar = menu_bar![
             menu![
                 "File",
@@ -87,10 +46,10 @@ mod tests {
                 item![action: "Paste", command: "edit.paste", hotkey: 'P', shortcut: "Ctrl+V"],
                 item![separator],
                 item![submenu: "Find", items: [
-                item![action: "Find", command: "edit.find", hotkey: 'F', shortcut: "Ctrl+F"],
-                item![action: "Find Next", command: "edit.find_next", hotkey: 'N'],
-                item![action: "Replace", command: "edit.replace", hotkey: 'R', shortcut: "Ctrl+H"]
-            ], hotkey: 'i'],
+                    item![action: "Find", command: "edit.find", hotkey: 'F', shortcut: "Ctrl+F"],
+                    item![action: "Find Next", command: "edit.find_next", hotkey: 'N'],
+                    item![action: "Replace", command: "edit.replace", hotkey: 'R', shortcut: "Ctrl+H"]
+                ], hotkey: 'i'],
             ],
             menu![
                 "Help",
@@ -100,89 +59,6 @@ mod tests {
                 item![action: "About", command: "help.about", hotkey: 'A'],
             ],
         ];
-
-        assert_eq!(menu_bar.menus.len(), 3);
-        assert_eq!(menu_bar.menus[0].title, "File");
-        assert_eq!(menu_bar.menus[1].title, "Edit");
-        assert_eq!(menu_bar.menus[2].title, "Help");
-    }
-
-    #[test]
-    fn test_menu_hierarchy() {
-        // Create a typical application menu bar using the shortest convenience methods
-        let menu_bar = MenuBar::from_menus([
-            // File menu - using action() and builder pattern
-            (
-                "File",
-                Some('F'),
-                vec![
-                    MenuItem::action("New", "file.new").with_hotkey('N'),
-                    MenuItem::action("Open", "file.open")
-                        .with_hotkey('O')
-                        .with_shortcut("Ctrl+O"),
-                    MenuItem::separator(),
-                    MenuItem::action("Save", "file.save")
-                        .with_hotkey('S')
-                        .with_shortcut("Ctrl+S"),
-                    MenuItem::action("Save As...", "file.save_as").with_hotkey('A'),
-                    MenuItem::separator(),
-                    MenuItem::action("Exit", "file.exit")
-                        .with_hotkey('x')
-                        .with_shortcut("Alt+F4"),
-                ],
-            ),
-            // Edit menu with submenu using shortest methods
-            (
-                "Edit",
-                Some('E'),
-                vec![
-                    MenuItem::action("Undo", "edit.undo")
-                        .with_hotkey('U')
-                        .with_shortcut("Ctrl+Z"),
-                    MenuItem::action("Redo", "edit.redo")
-                        .with_hotkey('R')
-                        .with_shortcut("Ctrl+Y"),
-                    MenuItem::separator(),
-                    MenuItem::action("Cut", "edit.cut")
-                        .with_hotkey('t')
-                        .with_shortcut("Ctrl+X"),
-                    MenuItem::action("Copy", "edit.copy")
-                        .with_hotkey('C')
-                        .with_shortcut("Ctrl+C"),
-                    MenuItem::action("Paste", "edit.paste")
-                        .with_hotkey('P')
-                        .with_shortcut("Ctrl+V"),
-                    MenuItem::separator(),
-                    MenuItem::submenu(
-                        "Find",
-                        vec![
-                            MenuItem::action("Find", "edit.find")
-                                .with_hotkey('F')
-                                .with_shortcut("Ctrl+F"),
-                            MenuItem::action("Find Next", "edit.find_next").with_hotkey('N'),
-                            MenuItem::action("Replace", "edit.replace")
-                                .with_hotkey('R')
-                                .with_shortcut("Ctrl+H"),
-                        ],
-                    )
-                    .with_hotkey('i'),
-                ],
-            ),
-            // Help menu - demonstrating optional help context
-            (
-                "Help",
-                Some('H'),
-                vec![
-                    MenuItem::action("Help Topics", "help.topics")
-                        .with_hotkey('T')
-                        .with_help_context("Display help documentation"),
-                    MenuItem::separator(),
-                    MenuItem::action("About", "help.about")
-                        .with_hotkey('A')
-                        .with_help_context("Show application information"),
-                ],
-            ),
-        ]);
 
         // Test the hierarchy
         assert_eq!(menu_bar.menus.len(), 3);
@@ -210,14 +86,12 @@ mod tests {
 
     #[test]
     fn test_menu_item_properties() {
-        let item = MenuItem::action("Test", "test.command")
-            .with_help_context("Test help")
-            .with_enabled(false);
+        let item = item![action: "Test", command: "test.command"];
 
         assert_eq!(item.text(), Some("Test"));
-        assert!(!item.is_enabled());
+        assert!(item.is_enabled());
 
-        let separator = MenuItem::separator();
+        let separator = item![separator];
         assert_eq!(separator.text(), None);
         assert!(!separator.is_enabled());
     }
@@ -225,14 +99,14 @@ mod tests {
     #[test]
     fn test_hotkey_functionality() {
         // Test menu hotkeys
-        let file_menu = Menu::with_hotkey("File", 'F');
+        let file_menu = menu!["File", 'F',];
         assert_eq!(file_menu.hotkey, Some('F'));
 
-        let edit_menu = Menu::with_hotkey("Edit", 'E');
+        let edit_menu = menu!["Edit", 'E',];
         assert_eq!(edit_menu.hotkey, Some('E'));
 
         // Test menu item hotkeys
-        let new_item = MenuItem::action("New", "file.new").with_hotkey('N');
+        let new_item = item![action: "New", command: "file.new", hotkey: 'N'];
         if let MenuItem::Action(action) = new_item {
             assert_eq!(action.hotkey, Some('N'));
         } else {
@@ -240,14 +114,10 @@ mod tests {
         }
 
         // Test submenu hotkeys
-        let submenu = MenuItem::submenu(
-            "Recent Files",
-            vec![
-                MenuItem::action("Document1.txt", "file.open_recent").with_hotkey('1'),
-                MenuItem::action("Document2.txt", "file.open_recent").with_hotkey('2'),
-            ],
-        )
-        .with_hotkey('R');
+        let submenu = item![submenu: "Recent Files", items: [
+            item![action: "Document1.txt", command: "file.open_recent", hotkey: '1'],
+            item![action: "Document2.txt", command: "file.open_recent", hotkey: '2']
+        ], hotkey: 'R'];
 
         if let MenuItem::SubMenu(submenu_data) = submenu {
             assert_eq!(submenu_data.hotkey, Some('R'));
@@ -265,9 +135,8 @@ mod tests {
         }
 
         // Test action item with both hotkey and shortcut
-        let save_item = MenuItem::action("Save", "file.save")
-            .with_hotkey('S')
-            .with_shortcut("Ctrl+S");
+        let save_item =
+            item![action: "Save", command: "file.save", hotkey: 'S', shortcut: "Ctrl+S"];
 
         if let MenuItem::Action(action) = save_item {
             assert_eq!(action.hotkey, Some('S'));
@@ -280,8 +149,8 @@ mod tests {
     #[test]
     fn test_hotkey_case_sensitivity() {
         // Test that hotkeys preserve case
-        let lower_case = MenuItem::action("lowercase", "test.lower").with_hotkey('l');
-        let upper_case = MenuItem::action("UPPERCASE", "test.upper").with_hotkey('L');
+        let lower_case = item![action: "lowercase", command: "test.lower", hotkey: 'l'];
+        let upper_case = item![action: "UPPERCASE", command: "test.upper", hotkey: 'L'];
 
         if let MenuItem::Action(action) = lower_case {
             assert_eq!(action.hotkey, Some('l'));
@@ -292,8 +161,8 @@ mod tests {
         }
 
         // Test menu hotkeys with different cases
-        let menu_lower = Menu::with_hotkey("test", 't');
-        let menu_upper = Menu::with_hotkey("Test", 'T');
+        let menu_lower = menu!["test", 't',];
+        let menu_upper = menu!["Test", 'T',];
 
         assert_eq!(menu_lower.hotkey, Some('t'));
         assert_eq!(menu_upper.hotkey, Some('T'));
@@ -305,12 +174,14 @@ mod tests {
         let menu_bar = MenuBar::new();
         assert_eq!(menu_bar.menus.len(), 0);
 
-        // Test fluent menu construction
-        let file_menu = Menu::new("File")
-            .hotkey('F')
-            .item(MenuItem::new_action("New", "file.new"))
-            .item(MenuItem::separator())
-            .item(MenuItem::new_action("Exit", "file.exit"));
+        // Test fluent menu construction using macros and manual construction
+        let file_menu = menu![
+            "File",
+            'F',
+            item![action: "New", command: "file.new"],
+            item![separator],
+            item![action: "Exit", command: "file.exit"],
+        ];
 
         assert_eq!(file_menu.title, "File");
         assert_eq!(file_menu.hotkey, Some('F'));
@@ -336,17 +207,18 @@ mod tests {
     }
 
     #[test]
-    fn test_trait_functionality() {
-        // Test trait object usage
+    fn test_enum_pattern_matching() {
+        // Test direct pattern matching usage (idiomatic Rust)
         let items: Vec<MenuItem> = vec![
-            MenuItem::new_action("New", "file.new"),
-            MenuItem::separator(),
-            MenuItem::new_submenu("Recent"),
+            item![action: "New", command: "file.new"],
+            item![separator],
+            item![submenu: "Recent", items: []],
         ];
 
-        assert_eq!(items[0].item_type(), MenuItemType::Action);
-        assert_eq!(items[1].item_type(), MenuItemType::Separator);
-        assert_eq!(items[2].item_type(), MenuItemType::SubMenu);
+        // Test direct pattern matching (more idiomatic than item_type())
+        assert!(matches!(items[0], MenuItem::Action(_)));
+        assert!(matches!(items[1], MenuItem::Separator(_)));
+        assert!(matches!(items[2], MenuItem::SubMenu(_)));
 
         assert_eq!(items[0].label(), Some("New"));
         assert_eq!(items[1].label(), None);

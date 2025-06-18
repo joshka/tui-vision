@@ -1,181 +1,117 @@
-use super::core::{Menu, MenuBar};
-use super::items::{ActionItem, MenuItem, SeparatorItem, SubMenuItem};
 use crate::command::Command;
 
-// MenuBar builders
-impl MenuBar {
-    /// Creates a new empty menu bar.
-    pub fn new() -> Self {
-        Self {
-            menus: Vec::new(),
-            opened_menu: None,
+// Forward declaration for MenuItem enum (to avoid circular dependency)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MenuItem {
+    Action(ActionItem),
+    Separator(SeparatorItem),
+    SubMenu(SubMenuItem),
+}
+
+impl MenuItem {
+    /// Gets the text of the menu item (if applicable).
+    pub fn text(&self) -> Option<&str> {
+        match self {
+            Self::Action(action) => Some(&action.label),
+            Self::SubMenu(submenu) => Some(&submenu.label),
+            Self::Separator(_) => None,
         }
     }
 
-    /// Creates a new menu bar with the given menus.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use tui_vision::menus::{MenuBar, Menu};
-    ///
-    /// let menu_bar = MenuBar::with_menus(vec![
-    ///     Menu::new("File").hotkey('F'),
-    ///     Menu::new("Edit").hotkey('E'),
-    /// ]);
-    /// ```
-    pub fn with_menus(menus: Vec<Menu>) -> Self {
-        Self {
-            menus,
-            opened_menu: None,
+    /// Checks if the menu item is enabled.
+    pub fn is_enabled(&self) -> bool {
+        match self {
+            Self::Action(action) => action.enabled,
+            Self::SubMenu(submenu) => submenu.enabled,
+            Self::Separator(_) => false, // Separators are not selectable
         }
     }
 
-    /// Creates a new menu bar from menu definitions.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use tui_vision::menus::{MenuBar, MenuItem};
-    ///
-    /// let menu_bar = MenuBar::from_menus([
-    ///     ("File", Some('F'), vec![
-    ///         MenuItem::new_action("New", "file.new"),
-    ///         MenuItem::separator(),
-    ///         MenuItem::new_action("Exit", "file.exit"),
-    ///     ]),
-    ///     ("Edit", Some('E'), vec![
-    ///         MenuItem::new_action("Undo", "edit.undo"),
-    ///         MenuItem::new_action("Redo", "edit.redo"),
-    ///     ]),
-    /// ]);
-    /// ```
-    pub fn from_menus<I, S>(menus: I) -> Self
-    where
-        I: IntoIterator<Item = (S, Option<char>, Vec<MenuItem>)>,
-        S: Into<String>,
-    {
-        let menus = menus
-            .into_iter()
-            .map(|(title, hotkey, items)| Menu::with_items(title, hotkey, items))
-            .collect();
-        Self {
-            menus,
-            opened_menu: None,
+    /// Returns the label of this menu item, if any.
+    pub fn label(&self) -> Option<&str> {
+        match self {
+            Self::Action(action) => Some(&action.label),
+            Self::SubMenu(submenu) => Some(&submenu.label),
+            Self::Separator(_) => None,
         }
     }
 
-    /// Adds a menu to the menu bar (builder pattern).
-    pub fn add_menu(&mut self, menu: Menu) -> &mut Self {
-        self.menus.push(menu);
-        self
+    /// Returns the hotkey of this menu item, if any.
+    pub fn hotkey(&self) -> Option<char> {
+        match self {
+            Self::Action(action) => action.hotkey,
+            Self::SubMenu(submenu) => submenu.hotkey,
+            Self::Separator(_) => None,
+        }
+    }
+
+    /// Returns whether this menu item is selectable.
+    pub fn is_selectable(&self) -> bool {
+        !matches!(self, Self::Separator(_))
     }
 }
 
-// Menu builders
-impl Menu {
-    /// Creates a new menu with the given title.
-    pub fn new(title: impl Into<String>) -> Self {
-        Self {
-            title: title.into(),
-            items: Vec::new(),
-            enabled: true,
-            hotkey: None,
-            focused_item: None,
-        }
-    }
+/// An action menu item that executes a command when selected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionItem {
+    /// Text label displayed to the user
+    pub label: String,
 
-    /// Creates a new menu with a hotkey.
-    pub fn with_hotkey(title: impl Into<String>, hotkey: char) -> Self {
-        Self {
-            title: title.into(),
-            items: Vec::new(),
-            enabled: true,
-            hotkey: Some(hotkey),
-            focused_item: None,
-        }
-    }
+    /// Command to execute when this item is selected
+    pub command: Command,
 
-    /// Creates a new menu with title, hotkey, and items.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use tui_vision::menus::{Menu, MenuItem};
-    ///
-    /// let menu = Menu::with_items("File", Some('F'), vec![
-    ///     MenuItem::new_action("New", "file.new"),
-    ///     MenuItem::separator(),
-    /// ]);
-    /// ```
-    pub fn with_items<S: Into<String>>(
-        title: S,
-        hotkey: Option<char>,
-        items: Vec<MenuItem>,
-    ) -> Self {
-        Self {
-            title: title.into(),
-            items,
-            enabled: true,
-            hotkey,
-            focused_item: None,
-        }
-    }
+    /// Whether the action is enabled
+    pub enabled: bool,
 
-    /// Sets the hotkey for this menu (builder pattern).
-    pub fn hotkey(mut self, hotkey: char) -> Self {
-        self.hotkey = Some(hotkey);
-        self
-    }
+    /// Optional hotkey for quick access
+    pub hotkey: Option<char>,
 
-    /// Adds an item to this menu (builder pattern).
-    pub fn item(mut self, item: MenuItem) -> Self {
-        self.items.push(item);
-        self
-    }
+    /// Optional keyboard shortcut display (e.g., "Ctrl+S")
+    pub shortcut: Option<String>,
 
-    /// Adds multiple items to this menu (builder pattern).
-    pub fn items(mut self, items: Vec<MenuItem>) -> Self {
-        self.items.extend(items);
-        self
-    }
+    /// Help context for additional information
+    pub help_context: Option<String>,
+}
 
-    /// Adds an action item as a convenience method.
-    pub fn add_action<S: Into<String>, C: Into<Command>>(
-        &mut self,
-        label: S,
-        command: C,
-        hotkey: Option<char>,
-    ) -> &mut Self {
-        let action = ActionItem::new(label, command);
-        let action = if let Some(hk) = hotkey {
-            action.hotkey(hk)
-        } else {
-            action
-        };
-        self.items.push(MenuItem::Action(action));
-        self
-    }
+/// A separator menu item for visual grouping.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeparatorItem;
 
-    /// Adds a separator as a convenience method.
-    pub fn add_separator(&mut self) -> &mut Self {
-        self.items.push(MenuItem::Separator(SeparatorItem::new()));
-        self
-    }
+/// A submenu containing other menu items.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubMenuItem {
+    /// Text label displayed to the user
+    pub label: String,
 
-    /// Adds a submenu as a convenience method.
-    pub fn add_submenu<S: Into<String>>(&mut self, label: S, hotkey: Option<char>) -> &mut Self {
-        self.items.push(MenuItem::SubMenu(SubMenuItem::with_items(
-            label,
-            hotkey,
-            vec![],
-        )));
-        self
-    }
+    /// Collection of menu items in the submenu
+    pub items: Vec<MenuItem>,
 
-    /// Adds a menu item to this menu.
-    pub fn add_item(&mut self, item: MenuItem) {
-        self.items.push(item);
+    /// Whether the submenu is enabled
+    pub enabled: bool,
+
+    /// Optional hotkey for quick access
+    pub hotkey: Option<char>,
+
+    /// Help context for additional information
+    pub help_context: Option<String>,
+
+    /// Index of the currently focused item when this submenu is open
+    pub focused_item: Option<usize>,
+
+    /// Whether this submenu is currently open
+    pub is_open: bool,
+}
+
+impl Default for SeparatorItem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SeparatorItem {
+    /// Creates a new separator item.
+    pub fn new() -> Self {
+        Self
     }
 }
 

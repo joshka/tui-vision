@@ -1,5 +1,4 @@
-use super::core::{Menu, MenuBar};
-use super::items::MenuItem;
+use super::{Menu, MenuBar, MenuItem};
 
 // MenuBar state management
 impl MenuBar {

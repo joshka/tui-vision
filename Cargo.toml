@@ -12,6 +12,7 @@ license = "MIT OR Apache-2.0"
 crossterm = "0.29"
 ratatui-core = "0.1.0-alpha"
 ratatui-widgets = { version = "0.3.0-alpha", default-features = false }
+unicode-width = "0.2"
 
 [dev-dependencies]
 color-eyre = "0.6"

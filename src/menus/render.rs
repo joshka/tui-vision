@@ -4,9 +4,51 @@ use ratatui_core::{
     style::{Modifier, Style},
     widgets::{StatefulWidget, Widget},
 };
-use ratatui_widgets::{block::Block, clear::Clear};
+use ratatui_widgets::block::Block;
+use unicode_width::UnicodeWidthStr;
 
 use super::{Menu, MenuBar, MenuItem};
+
+/// Clears an area in the buffer, properly handling CJK/wide character boundaries.
+///
+/// When a wide character (like CJK characters) spans 2 cells, and the clear area
+/// boundary cuts through it, this function ensures both cells are cleared to
+/// prevent display corruption.
+fn clear_area_cjk_aware(area: Rect, buf: &mut Buffer) {
+    let buf_area = buf.area();
+    let buf_left = buf_area.left();
+    let buf_right = buf_area.right();
+    let buf_top = buf_area.top();
+    let buf_bottom = buf_area.bottom();
+
+    for y in area.top()..area.bottom() {
+        if y < buf_top || y >= buf_bottom {
+            continue;
+        }
+
+        // Check if the cell to the LEFT of our area contains a wide character
+        // that extends into our area (we would be clearing its "continuation" cell)
+        if area.left() > buf_left {
+            let left_x = area.left() - 1;
+            if left_x >= buf_left && left_x < buf_right {
+                let symbol = buf[(left_x, y)].symbol().to_string();
+                let width = symbol.width();
+                // If the left cell has a wide character (width > 1), it extends into our area
+                // We need to clear it to avoid leaving a "half character"
+                if width > 1 {
+                    buf[(left_x, y)].reset();
+                }
+            }
+        }
+
+        // Now clear all cells in the area for this row
+        for x in area.left()..area.right() {
+            if x >= buf_left && x < buf_right {
+                buf[(x, y)].reset();
+            }
+        }
+    }
+}
 
 /// Rendering implementation for the MenuBar widget.
 ///
@@ -176,8 +218,8 @@ impl MenuBar {
         let dropdown_style = self.theme.dropdown;
         let border_style = self.theme.dropdown_border;
 
-        // Use Clear widget to clear the dropdown area
-        Clear.render(area, buf);
+        // Use CJK-aware clear to handle wide character boundaries properly
+        clear_area_cjk_aware(area, buf);
 
         // Use Block widget for the border
         let block = Block::bordered()
@@ -227,8 +269,8 @@ impl MenuBar {
         let dropdown_style = self.theme.dropdown;
         let border_style = self.theme.dropdown_border;
 
-        // Use Clear widget to clear the submenu area
-        Clear.render(area, buf);
+        // Use CJK-aware clear to handle wide character boundaries properly
+        clear_area_cjk_aware(area, buf);
 
         // Use Block widget for the border
         let block = Block::bordered()
